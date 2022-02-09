@@ -8,6 +8,7 @@ Created on Sat Jan 22 20:05:04 2022
 
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy import stats
 
 # %%
 import matplotlib.pylab as pylab
@@ -151,7 +152,8 @@ class TS :
 
     def __init__(self, reward_dist):
         self.reward_dist = reward_dist
-    
+       
+        
     def action(self,  reward_estimates, num_arms_played, n_bandits):
         
         """
@@ -169,28 +171,65 @@ class TS :
           samples_list = [np.random.beta(success_count[bandit_id]+1, failure_count[bandit_id]+1) for bandit_id in range(n_bandits)]
 
         elif self.reward_dist == 'Gaussian':  
+            
+          #here the update rule we have assumed is for bandits with variance = 1.
+          #Need to update the rule for the case with different variance
 
           samples_list = [np.random.normal(loc = reward_estimates[0,bandit_id], scale = 1/(num_arms_played[0,bandit_id]+1)) for bandit_id in range(n_bandits)]
         
         # select the arm without any tie-breaking
-        return np.argmax(samples_list) 
-# class TS :
-
-#     def __init__(self):
-#         pass
-    
-#     def action(self,  reward_estimates, num_arms_played, n_bandits):
+        a_t = np.argmax(samples_list) 
         
-#         """
-#         num_arms_played : Contains the number of times each arm is played
-#         reward_estimates = contains the reward estimate for each arm
-#         n_banits : Contains the indexes of the arms
-#         """
         
-#         samples_list = [np.random.normal(loc = reward_estimates[0,bandit_id], scale = 1/(num_arms_played[0,bandit_id]+1)) for bandit_id in range(n_bandits)]
-
-#         return np.argmax(samples_list) # select the arm without any tie-breaking
+        return a_t
     
+    
+class TS_Gaussian :
+
+    def __init__(self, n_bandits):
+        # self.reward_dist = reward_dist
+        
+        #prior values of parameters for gaussian distribution to estimate the mean
+        self.prior_mean = np.zeros((1,n_bandits))
+        self.nu = np.ones((1,n_bandits))
+        
+        #prior values of parameters for inverse gamma distribution to estimate the variance
+        self.init_alpha = 1*np.ones((1,n_bandits))
+        self.init_beta = 1*np.ones((1,n_bandits))
+        
+        self.alpha = self.init_alpha
+        self.beta = self.init_beta
+        
+        self.s = np.zeros((1,n_bandits))
+    
+    def action(self,  reward_estimates, num_arms_played, n_bandits):
+        
+        """
+        num_arms_played : Contains the number of times each arm is played
+        reward_estimates = contains the reward estimate for each arm
+        n_banits : Contains the indexes of the arms
+        """
+        
+        var_est = [stats.invgamma.rvs(a = self.alpha[0,bandit_id], scale = self.beta[0, bandit_id]) for bandit_id in range(n_bandits)]
+        
+        mu_var = var_est/(num_arms_played + self.nu)
+        rho = (self.nu*self.prior_mean + num_arms_played*reward_estimates)/(self.nu + num_arms_played)
+        
+        samples_list = [np.random.normal(loc = rho[0,bandit_id], scale = mu_var[0,bandit_id]) for bandit_id in range(n_bandits)]
+
+        a_t = np.argmax(samples_list) # select the arm without any tie-breaking
+        
+        return a_t
+    
+    def update(self, reward_estimate, reward, a_t, num_plays):
+        
+        self.s[0,a_t]  += reward**2 + (num_plays) * ((reward_estimate +  (( reward_estimate - reward)/(num_plays)))**2) - (num_plays+1) * (reward_estimate**2)
+        self.beta[0,a_t] = self.init_beta[0,a_t] + 0.5*self.s[0,a_t] + (num_plays*self.nu[0,a_t]*((reward_estimate - self.prior_mean[0,a_t])**2))/(2*(num_plays + self.nu[0,a_t]))
+        self.alpha[0, a_t] = 0.5*num_plays + self.init_alpha[0,a_t]
+        
+        # print(self.s[0,a_t], self.beta[0,a_t], self.alpha[0,a_t])
+         # print(self.q)
+        
 class Reinforce:
 
   def __init__(self, n_bandits, learning_rate = 0.1):
@@ -210,7 +249,7 @@ class Reinforce:
 
   def update_weights(self, a_t, reward_t, avg_reward):
 
-    #update the weight parameters using the update rule
+    #update the weight parameters using the stochastic gradient ascent update rule
     self.w += - self.lr*(reward_t)*self.probs
     self.w[0,a_t] +=  self.lr*(reward_t) 
     
@@ -278,13 +317,24 @@ softmax_temp = 0.05
 algo_labels = [f"Epsilon Greedy with epsilon = {epsilon}", "Variable-Epsilon Greedy", f"Softmax with temp = {softmax_temp}", "Upper Confidence Bound", "Thompson Sampling", "Reinforce Algorithm", "Reinforce With Baseline"]
 
 for K in K_list:
+    
+  
+  mab_list = [] #list of instantiation of MAB 
+  for _ in range(num_runs):
+        bandits_mean = np.random.uniform(low = 0, high = 1, size = K) #bandits_mean_list[0:K]
+        opt_arm      = np.argmax(bandits_mean)
+        # Instantiate the MAB object with the bandit means ans standard deviation
+        mab = MAB('Bernoulli', bandits_mean) 
+        mab_list.append(mab)
+
+
   fig1, ax1 = plt.subplots(1,1, figsize=(20, 10))
   fig2, axs = plt.subplots(1,2, figsize=(20, 10))
   print("====================================================================================================================================================================================")
   print("====================================================================================================================================================================================\n")
   print(f"\n******************************** NUMBER OF ARMS : {K} ********************************\n")
   print(f"Each algorithm was played {num_runs} times and the episode length was {T}\n")
-
+  
   for algo_number in range(num_algorithms):
       
       # Stores the cummulative regret averaged over 'num_runs'
@@ -298,13 +348,10 @@ for K in K_list:
       running_avg_regret_per_turn = np.zeros((1,T+1))
 
       for run in range(num_runs): 
-
-          if (algo_number == 0 ):
-            bandits_mean = np.random.uniform(low = 0, high = 1, size =K) #bandits_mean_list[0:K]
-            opt_arm      = np.argmax(bandits_mean)
-
-            # Instantiate the MAB object with the bandit means ans standard deviation
-            mab = MAB('Bernoulli',bandits_mean) 
+            
+          mab = mab_list[run]
+          opt_arm = np.argmax(mab.bandits_mean)
+            
           # The algorithms are instantiated for each run
           algorithms = [Epsilon_Greedy(epsilon), Variable_Epsilon_Greedy(1), Softmax(temp = softmax_temp), UCB(), TS('Bernoulli'), Reinforce(K), Reinforce_Baseline(K)]
 
@@ -382,12 +429,12 @@ for K in K_list:
 # %%
 
 # Different number of arms simulated
-K_list            = [2,5,10]
-stdv_list         = [0.01, 0.1, 1]
+K_list            = [2, 5, 10]
+stdv_list         = [0.5, 1]
 # bandits_mean_list = [0.2, 0.3, 0.5, 0.25, 0.45, 0.6, 0.62, 0.54, 0.1, 0.58]
 
-T = 20000  # No. of time steps we need to pull the arm
-num_runs = 20    # Number of times to run the simulation
+T = 30000  # No. of time steps we need to pull the arm
+num_runs = 50    # Number of times to run the simulation
 num_algorithms = 7
 
 # Parameters
@@ -396,7 +443,7 @@ epsilon      = 0.1
 softmax_temp = 0.05
 
 algo_labels = [f"Epsilon Greedy with epsilon = {epsilon}", "Variable-Epsilon Greedy", f"Softmax with temp = {softmax_temp}", "Upper Confidence Bound", "Thompson Sampling", "Reinforce Algorithm", "Reinforce With Baseline"]    
-
+# algo_labels = ["TS_Gaussian"]
 # %%
 
 for stdv in stdv_list:
@@ -408,13 +455,27 @@ for stdv in stdv_list:
     # Instantiate the MAB object with the bandit means ans standard deviation
     # mab = MAB('Gaussian',bandits_mean,stdv) 
 
+    mab_list = [] #list of instantiation of MAB 
+    for _ in range(num_runs):
+        bandits_mean = np.random.uniform(low = 0, high = 1, size = K) #bandits_mean_list[0:K]
+       
+        # Instantiate the MAB object with the bandit means ans standard deviation
+        mab = MAB('Gaussian', bandits_mean,stdv) 
+        mab_list.append(mab)
+
+
+    # The algorithms are instantiated for each run
+    # algorithms = [Epsilon_Greedy(epsilon), Variable_Epsilon_Greedy(1), Softmax(temp = softmax_temp), UCB(), TS_Gaussian(K), Reinforce(K), Reinforce_Baseline(K)]
+    # algorithms = [TS_Gaussian(K)]
     
     fig2, axs = plt.subplots(1,2, figsize=(20, 10))
     fig1, ax1 = plt.subplots(1,1, figsize = (20,10))
     print("====================================================================================================================================================================================")
     print("====================================================================================================================================================================================\n")
+    print(f"\n******************************** Standard Deviation of each arm : {stdv} ********************************\n")
     print(f"\n******************************** NUMBER OF ARMS : {K} ********************************\n")
     print(f"Each algorithm was played {num_runs} times and the episode length was {T}\n")
+    
 
     for algo_number in range(num_algorithms):
         
@@ -428,11 +489,15 @@ for stdv in stdv_list:
 
         running_avg_regret_per_turn = np.zeros((1,T+1))
 
-        for run in range(num_runs): 
-
-            # The algorithms are instantiated for each run
-            algorithms = [Epsilon_Greedy(epsilon), Variable_Epsilon_Greedy(1), Softmax(temp = softmax_temp), UCB(), TS('Gaussian'), Reinforce(K), Reinforce_Baseline(K)]
-
+        for run in range(num_runs):
+            
+            mab = mab_list[run]
+            opt_arm = np.argmax(mab.bandits_mean)
+            
+            #we reinstantiate the algorithms for each run
+            algorithms = [Epsilon_Greedy(epsilon), Variable_Epsilon_Greedy(1), Softmax(temp = softmax_temp), UCB(), TS_Gaussian(K), Reinforce(K), Reinforce_Baseline(K)]
+    
+            
             # pick the bandit algorithm that you wish to run
             algorithm  = algorithms[algo_number]  
         
@@ -460,11 +525,6 @@ for stdv in stdv_list:
 
             for t in range(T): # At each time step pick an arm and obtain it's reward
                 
-                if (algo_number == 0 ):
-                  bandits_mean = np.random.uniform(low = 0, high = 1, size =K) #bandits_mean_list[0:K]
-                  opt_arm      = np.argmax(bandits_mean)
-                  # Instantiate the MAB object with the bandit means ans standard deviation
-                  mab = MAB('Gaussian',bandits_mean,stdv) 
 
                 a_t  = algorithm.action(reward_estimate, no_arms_pulled, K)
                 no_arms_pulled[0,a_t] += 1
@@ -475,6 +535,10 @@ for stdv in stdv_list:
                 reward_estimate[0,a_t] += ((reward - reward_estimate[0,a_t])/no_arms_pulled[0,a_t]) 
                 
                 avg_reward = np.sum(reward_estimate * no_arms_pulled)/(t+1)
+
+                if (algo_labels[algo_number] == "Thompson Sampling" ):
+                  algorithm.update(reward_estimate[0,a_t], reward, a_t, no_arms_pulled[0,a_t])
+
 
                 if (algo_labels[algo_number] == "Reinforce Algorithm" or algo_labels[algo_number] == "Reinforce With Baseline"):
                   algorithm.update_weights(a_t, reward, avg_reward)
@@ -495,8 +559,8 @@ for stdv in stdv_list:
 
         print(f"The total regret accumulated over time for {algo_labels[algo_number]} is {cummulative_avg_regret[0,-1]:.3f}\n")
 
-        if algo_labels[algo_number] == algo_labels[0] or algo_labels[algo_number] == algo_labels[2] :
-            continue
+        # if algo_labels[algo_number] == algo_labels[0] or algo_labels[algo_number] == algo_labels[2] :
+        #     continue
         ax1.plot(cummulative_avg_regret[0,1:], label = f'{algo_labels[algo_number]}')  
         axs[0].plot(running_avg_regret_per_turn[0,1:], label = f'{algo_labels[algo_number]}')
         axs[1].plot(avg_percent_optimal_arm[0,1:], label = f'{algo_labels[algo_number]}')
@@ -512,7 +576,7 @@ for stdv in stdv_list:
     plt.show()
 
 
-# # %% 
+# %% 
 
 # #define the success probability of each arm
 # K_list = [2,5,10]
