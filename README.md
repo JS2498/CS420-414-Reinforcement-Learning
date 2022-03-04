@@ -1,2 +1,2 @@
 # Reinforcement Learning 
-* Contains solution to assignment problems of the course "Reinforcement Learning" offered at IIT Dharwad.
+* Contains solution to assignment problems of the course "CS404 : Reinforcement Learning" offered by Dr. Prabuchandran K J at IIT Dharwad.
