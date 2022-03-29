@@ -229,9 +229,17 @@ class MDP_Maze:
         
 # %%
 
-class MonteCarlo:
+class OnPolicy_MonteCarlo:
     def __init__(self, env, num_states, epsilon=0.2, n_actions=3, learning_rate=0.01, gamma=0.999):
-        
+        """
+        Arguments :
+            env : environment (maze)
+            num_states : no. of states
+            epsilon : initial value of epsilon for epsilon-greedy policy
+            n_actions : no. of possible actions
+            learning_rate : learning rate in the update rule
+            gamma : discount factor
+        """
         self.env = env
         
         self.epsilon = epsilon
@@ -305,7 +313,15 @@ class MonteCarlo:
 
 class OffPolicy_MonteCarlo:
     def __init__(self, env, num_states, epsilon=0.2, n_actions=3, learning_rate=0.01, gamma=0.999):
-        
+        """
+        Arguments :
+            env : environment (maze)
+            num_states : no. of states
+            epsilon : initial value of epsilon for epsilon-greedy policy
+            n_actions : no. of possible actions
+            learning_rate : learning rate in the update rule
+            gamma : discount factor
+        """
         self.env = env
         
         self.epsilon = epsilon
@@ -394,7 +410,7 @@ class OffPolicy_MonteCarlo:
 
 
 class SARSA:
-    def __init__(self, env, num_states, epsilon=0.2, n_actions=3, learning_rate=0.01, gamma=0.999):
+    def __init__(self, env, num_states, epsilon=0.2, n_actions=3, learning_rate=0.01, gamma=0.99):
         """
         Arguments :
             env : environment (maze)
@@ -407,6 +423,8 @@ class SARSA:
         self.env = env
         self.epsilon = epsilon
         self.epsilon_min = 0.01
+        self.eps_reduction = 0.999
+
         
         self.gamma = gamma
         
@@ -416,8 +434,7 @@ class SARSA:
         self.Q = np.random.uniform(size=(num_states, n_actions))
         terminal_state_index = env.state_index[str(list(env.terminal_state))]
         self.Q[terminal_state_index,:] = 0
-        self.eps_reduction = (self.epsilon - self.epsilon_min)/2000
-
+       
     def choose_action(self, state):
         """
         Arguments :
@@ -449,13 +466,25 @@ class SARSA:
         next_action = self.choose_action(next_observation)
         Q_next = self.Q[next_observation, next_action]
         self.Q[state, action] += self.lr * (reward + (1-done)*self.gamma * Q_next - agent.Q[observation, action])
-
+    
+    def policy_value(self):
+        """
+        Returns the value corresponding to the deterministic policy and also the policy
+        """
+        V = np.zeros((self.env.n_states,1))
+        pi = np.ones((self.env.n_states,1))
+        
+        for s in range(n_states):
+            pi[s] = np.argmax(self.Q[s,:])
+            V[s] = np.max(self.Q[s,:])
+            
+        return V, pi
 
 # %%
 
 
 class Qlearning:
-    def __init__(self, env, num_states, epsilon=0.2, n_actions=3, learning_rate=0.01, gamma=0.999):
+    def __init__(self, env, num_states, epsilon=0.2, n_actions=3, learning_rate=0.01, gamma=0.99):
         """
         Arguments :
             env : environment (maze)
@@ -623,7 +652,7 @@ def Trajectory(start_pos, maze, mdp_maze, algorithm):
 
 lr = 0.01  # learning rate
 gamma = 0.99
-n_games = 150000
+n_games = 100000
 epsilon = 0.98
 scores = []
 avg_scores = []
@@ -636,7 +665,7 @@ state_dict = dict(enumerate(env.free_cells))
 n_states = len(state_dict)
 
 
-agent = OffPolicy_MonteCarlo(env, epsilon=epsilon, n_actions=env.n_actions, num_states=n_states)
+agent = SARSA(env, epsilon=epsilon, n_actions=env.n_actions, num_states=n_states)
 
 for i in range(n_games):
     done = False
@@ -656,7 +685,7 @@ for i in range(n_games):
 
         score += reward
 
-        # agent.learn(observation,action, reward, next_observation, done)
+        agent.learn(observation,action, reward, next_observation, done)
         
         # print(observation, next_observation, action)
         observation = next_observation
@@ -664,27 +693,34 @@ for i in range(n_games):
         if score < -200:
             break
         
-    agent.learn(episode)
-    # agent.epsilon = np.max((agent.epsilon*agent.eps_reduction, agent.epsilon_min))
+    # agent.learn(episode)
+    agent.epsilon = np.max((agent.epsilon*agent.eps_reduction, agent.epsilon_min))
     scores.append(score)
     avg_scores.append(np.mean(scores))
 
     if (i % 5000 == 0):
         print(f"The average reward is {np.mean(scores[-100:]):.3f} and the episode is {i}")
+        V, pi = agent.policy_value()
+        Q_learning_final ={'V' : V, 'pi' : pi, 'algorithm' : 'SARSA'}
+        # print(f"The time it took policy iteration to run is : {end-start:.3f}")
+        show(maze, env, Q_learning_final)
         
     # if (np.mean(scores[-100:])>-110):
     #     i = n_games
                
 
 V, pi = agent.policy_value()
-Q_learning_final ={'V' : V, 'pi' : pi, 'algorithm' : 'Q_learning'}
+Q_learning_final ={'V' : V, 'pi' : pi, 'algorithm' : 'SARSA'}
 # print(f"The time it took policy iteration to run is : {end-start:.3f}")
 show(maze, env, Q_learning_final)
 
+# %%
 x = [i+1 for i in range(n_games)]
+plt.figure(figsize = (6,6))
 plt.plot(x, avg_scores)
 plt.xlabel("Epsiodes")
-plt.ylabel("Score")
+plt.ylabel("Running average score over last 100 episodes ")
+plt.title("SARSA algorithm")
 
 
         
