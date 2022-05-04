@@ -10,7 +10,7 @@ Contains solution to assignment problems of the course "CS404 : Reinforcement Le
 * [Assignment 4](https://github.com/JS2498/RL_Lab/tree/main/Assignment_4) : Sample Based Monte-Carlo and Temporal Difference Methods
   * Implemented Every Visit Monte-Carlo, Q-learning and SARSA agents for classical maze and Mountain Car environment.
 
-* [Assignment 5](https://github.com/JS2498/RL_Lab/tree/main/Assignment_5) : Temprol Difference methods with function approximation and Reinforce algorithms.
+* [Assignment 5](https://github.com/JS2498/RL_Lab/tree/main/Assignment_5) : Temporal Difference methods with function approximation and Reinforce algorithm.
   * Implemented Q-learning, SARSA with Tile Coding and Radial basis function approximation methods, and Reinforce with and without baseline for Cart Pole and Mountain Car environment.
 
 * [Mini Project](https://github.com/JS2498/RL_Lab/tree/main/Mini_project) : Policy Gradient Algorithms for Atari games
